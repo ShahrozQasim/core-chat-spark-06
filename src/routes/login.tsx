@@ -23,16 +23,27 @@ function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function onGoogle() {
-    setError(null);
-    setLoading(true);
-    try {
-      await authService.signInWithGoogle();
-      navigate({ to: "/chat" });
-    } catch (e) {
-      setError("Could not sign in with Google. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  setError(null);
+  setLoading(true);
+
+  try {
+    const user = await authService.signInWithGoogle();
+
+    console.log("Google Login Success:", user);
+
+    navigate({ to: "/chat" });
+  } catch (e: any) {
+    console.error("Google Login Error:", e);
+
+    setError(
+      e?.message ||
+      e?.code ||
+      JSON.stringify(e) ||
+      "Could not sign in with Google."
+    );
+  } finally {
+    setLoading(false);
+  }
   }
 
   return (
