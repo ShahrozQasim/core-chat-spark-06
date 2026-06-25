@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Mic, Paperclip, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUp, Mic, Paperclip, Sparkles, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 import { Wordmark } from "@/components/Logo";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useChat } from "@/hooks/useChat";
 import { cn } from "@/lib/utils";
-import { chatService, personalityService } from "@/services/api";
+import { chatService, personalityService, authService } from "@/services/api";
 
 const searchSchema = z.object({ c: z.string().optional() });
 
@@ -24,7 +24,30 @@ export const Route = createFileRoute("/_app/chat")({
 function ChatPage() {
   const { c: chatId } = Route.useSearch();
   const navigate = useNavigate();
-  const { chat, isStreaming, send } = useChat(chatId ?? null);
+  
+  // ─── CRASH GUARD 1: User state aur Loading check ───
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    // Check if user is currently saved in storage or active session
+    const user = authService.current();
+    setCurrentUser(user);
+    setCheckingAuth(false);
+
+    // Subscribe to changes safely
+    const unsubscribe = authService.onAuthChange((u) => {
+      setCurrentUser(u);
+      setCheckingAuth(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // ─── CRASH GUARD 2: Safe string fallback for hook ───
+  // Agar chatId undefined ho toh hook crash na kare, isliye string fallback or null handle kiya hai
+  const safeChatId = chatId || null;
+  const { chat, isStreaming, send } = useChat(safeChatId);
+  
   const [draft, setDraft] = useState("");
   const [recording, setRecording] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -40,16 +63,39 @@ function ChatPage() {
   }, [chat?.personalityId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
   }, [chat?.messages?.length, isStreaming]);
+
+  // Loading Screen jab tak authentication stabilize na ho
+  if (checkingAuth) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="size-8 animate-spin text-foreground" />
+          <p className="text-sm text-muted-foreground">Syncing session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Agar login ke bagair direct access karein toh safe handle
+  if (!currentUser) {
+    return (
+      <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+        <h2 className="text-xl font-semibold">Authentication Required</h2>
+        <p className="text-sm text-muted-foreground max-w-xs">Please return to home page and sign in with Google.</p>
+        <Button onClick={() => navigate({ to: "/" })}>Go Home</Button>
+      </div>
+    );
+  }
 
   async function handleSend(text: string) {
     const value = text.trim();
     if (!value || isStreaming) return;
     
-    // 1. Pehle input field ko clear karein taaki double-click ya enter loop na bane
     setDraft("");
-    
     let currentChatId = chatId;
     
     if (!currentChatId) {
@@ -57,7 +103,6 @@ function ChatPage() {
         const created = await chatService.create();
         currentChatId = created.id;
 
-        // 2. Pehle router ka URL safely update karein aur query param 'c' set karein
         await navigate({
           to: "/chat",
           search: { c: currentChatId },
@@ -65,13 +110,11 @@ function ChatPage() {
         });
       } catch (err) {
         console.error("Failed to create chat:", err);
-        alert("Create chat failed: " + String(err));
-        setDraft(value); // Error aane par prompt wapas text area mein daal dein
+        setDraft(value); 
         return;
       }
     }
     
-    // 3. Naye ya majooda chatId par message send karein
     try {
       await send(value);
     } catch (err) {
@@ -241,4 +284,4 @@ function EmptyState() {
       </p>
     </div>
   );
-        }
+                  }
