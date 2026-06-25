@@ -131,10 +131,22 @@ export const chatService = {
   },
 
   async get(id: string): Promise<Chat | undefined> {
+  try {
     const snap = await getDoc(doc(db, "chats", id));
-    return snap.exists() ? (snap.data() as Chat) : undefined;
-  },
 
+    if (!snap.exists()) {
+      console.log("Chat not found:", id);
+      return undefined;
+    }
+
+    return snap.data() as Chat;
+  } catch (e) {
+    console.error("Firestore get error:", e);
+    alert("Firestore get error: " + String(e));
+    return undefined;
+  }
+ }
+  
   async create(personalityId?: string): Promise<Chat> {
     const userId = authService.current()?.id ?? "anon";
     // Enforce FIFO: delete oldest if already at limit
