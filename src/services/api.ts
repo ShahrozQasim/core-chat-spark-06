@@ -1,4 +1,5 @@
-// CoreChat AI — service layer with Firebase Auth + Firestore
+// CoreChat AI — service layer
+// Firebase Auth + Firestore (with fallback to localStorage)
 // Swap aiProvider with n8n or any external AI backend without touching UI.
 
 import { N8N_WEBHOOK_URL } from "@/lib/api";
@@ -12,50 +13,52 @@ import type {
   User,
 } from "@/lib/types";
 
-// ─── Firebase ────────────────────────────────────────────────────────────────
-import { initializeApp, getApps } from "firebase/app";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signOut as fbSignOut,
-  onAuthStateChanged,
-  type User as FBUser,
-} from "firebase/auth";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  collection,
-  query,
-  where,
-  orderBy,
-  getDocs,
-  addDoc,
-  deleteDoc,
-  serverTimestamp,
-  limit,
-} from "firebase/firestore";
+// ─── Firebase (with graceful fallback) ────────────────────────────────────
+let auth: any = null;
+let db: any = null;
+let fbInitialized = false;
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDUdare1dGvNq8HVgLuPC7ZgeYtXLZHJ_w",
-  authDomain: "corechat-ai.firebaseapp.com",
-  projectId: "corechat-ai",
-  storageBucket: "corechat-ai.appspot.com",
-  messagingSenderId: "1971555902",
-  appId: "1:1971555902:web:0c82fd7dbae4371c15cb6f",
-};
+async function initFirebase() {
+  if (fbInitialized) return;
+  try {
+    const { initializeApp, getApps } = await import("firebase/app");
+    const { getAuth } = await import("firebase/auth");
+    const { getFirestore } = await import("firebase/firestore");
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]!;
-const auth = getAuth(app);
-const db = getFirestore(app);
+    const firebaseConfig = {
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+    if (
+      !firebaseConfig.apiKey ||
+      !firebaseConfig.authDomain ||
+      !firebaseConfig.projectId
+    ) {
+      console.warn("Firebase env vars missing — using localStorage fallback");
+      return false;
+    }
+
+    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+    auth = getAuth(app);
+    db = getFirestore(app);
+    fbInitialized = true;
+    return true;
+  } catch (e) {
+    console.warn("Firebase init failed — using localStorage fallback", e);
+    return false;
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
 const uid = (prefix = "id") =>
   `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
-function fbUserToUser(fb: FBUser): User {
+function fbUserToUser(fb: any): User {
   return {
     id: fb.uid,
     email: fb.email ?? "",
@@ -65,33 +68,52 @@ function fbUserToUser(fb: FBUser): User {
   };
 }
 
-async function ensureUserDoc(fb: FBUser): Promise<void> {
-  const ref = doc(db, "users", fb.uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      id: fb.uid,
-      email: fb.email ?? "",
-      name: fb.displayName ?? fb.email?.split("@")[0] ?? "User",
-      avatarUrl: fb.photoURL ?? null,
-      createdAt: serverTimestamp(),
-    });
-  }
-}
-
-// ─── Auth ─────────────────────────────────────────────────────────────────────
+// ─── Auth ─────────────────────────────────────────────────────────────────
 export const authService = {
   async signInWithGoogle(): Promise<User> {
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
-    await ensureUserDoc(result.user);
-    const user = fbUserToUser(result.user);
+    const hasFirebase = await initFirebase();
+    
+    if (hasFirebase && auth) {
+      const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = fbUserToUser(result.user);
+      storage.set(STORAGE_KEYS.user, user);
+      
+      // Create user doc in Firestore
+      const { doc, setDoc, serverTimestamp } = await import("firebase/firestore");
+      try {
+        await setDoc(doc(db, "users", result.user.uid), {
+          id: result.user.uid,
+          email: result.user.email ?? "",
+          name: result.user.displayName ?? "",
+          avatarUrl: result.user.photoURL ?? null,
+          createdAt: serverTimestamp(),
+        }, { merge: true });
+      } catch (e) {
+        console.warn("Could not create user doc", e);
+      }
+      return user;
+    }
+    
+    // Fallback: mock login
+    const user: User = {
+      id: uid("u"),
+      email: `user_${Date.now()}@corechat.local`,
+      name: "Demo User",
+      avatarUrl: undefined,
+      createdAt: new Date().toISOString(),
+    };
     storage.set(STORAGE_KEYS.user, user);
     return user;
   },
 
   signOut(): void {
-    void fbSignOut(auth);
+    if (auth) {
+      import("firebase/auth").then(({ signOut: fbSignOut }) => {
+        void fbSignOut(auth);
+      });
+    }
     storage.remove(STORAGE_KEYS.user);
   },
 
@@ -100,59 +122,94 @@ export const authService = {
   },
 
   onAuthChange(cb: (user: User | null) => void): () => void {
-    return onAuthStateChanged(auth, (fb) => {
-      if (fb) {
-        const user = fbUserToUser(fb);
-        storage.set(STORAGE_KEYS.user, user);
-        cb(user);
-      } else {
-        storage.remove(STORAGE_KEYS.user);
-        cb(null);
-      }
+    if (!auth) {
+      const user = this.current();
+      cb(user);
+      return () => {};
+    }
+
+    import("firebase/auth").then(({ onAuthStateChanged }) => {
+      const unsub = onAuthStateChanged(auth, (fb) => {
+        if (fb) {
+          const user = fbUserToUser(fb);
+          storage.set(STORAGE_KEYS.user, user);
+          cb(user);
+        } else {
+          storage.remove(STORAGE_KEYS.user);
+          cb(null);
+        }
+      });
+      return unsub;
     });
+
+    return () => {};
   },
 };
 
-// ─── Chats (Firestore, max 5 per user, FIFO) ─────────────────────────────────
+// ─── Chats (localStorage fallback) ────────────────────────────────────────
 const MAX_CHATS = 5;
+const CHATS_KEY = "chats_v1";
+
+function getChatsFromStorage(): Chat[] {
+  return storage.get<Chat[]>(CHATS_KEY, []) || [];
+}
+
+function saveChatsToStorage(chats: Chat[]): void {
+  storage.set(CHATS_KEY, chats);
+}
 
 export const chatService = {
   async list(): Promise<Chat[]> {
     const userId = authService.current()?.id;
     if (!userId) return [];
-    const q = query(
-      collection(db, "chats"),
-      where("userId", "==", userId),
-      orderBy("updatedAt", "desc"),
-      limit(MAX_CHATS)
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data() as Chat);
+
+    // Try Firestore first
+    if (db) {
+      try {
+        const { collection, query, where, orderBy, getDocs, limit } =
+          await import("firebase/firestore");
+        const q = query(
+          collection(db, "chats"),
+          where("userId", "==", userId),
+          orderBy("updatedAt", "desc"),
+          limit(MAX_CHATS)
+        );
+        const snap = await getDocs(q);
+        return snap.docs.map((d) => d.data() as Chat);
+      } catch (e) {
+        console.warn("Firestore list failed, using localStorage", e);
+      }
+    }
+
+    // Fallback: localStorage
+    return getChatsFromStorage().filter((c) => c.userId === userId);
   },
 
   async get(id: string): Promise<Chat | undefined> {
-    try {
-      const snap = await getDoc(doc(db, "chats", id));
-      if (!snap.exists()) {
-        console.log("Chat not found:", id);
-        return undefined;
+    if (db) {
+      try {
+        const { doc, getDoc } = await import("firebase/firestore");
+        const snap = await getDoc(doc(db, "chats", id));
+        return snap.exists() ? (snap.data() as Chat) : undefined;
+      } catch (e) {
+        console.warn("Firestore get failed, using localStorage", e);
       }
-      return snap.data() as Chat;
-    } catch (e) {
-      console.error("Firestore get error:", e);
-      alert("Firestore get error: " + String(e));
-      return undefined;
     }
+
+    const chats = getChatsFromStorage();
+    return chats.find((c) => c.id === id);
   },
 
   async create(personalityId?: string): Promise<Chat> {
     const userId = authService.current()?.id ?? "anon";
-    // Enforce FIFO: delete oldest if already at limit
     const existing = await this.list();
+
+    // Enforce FIFO
     if (existing.length >= MAX_CHATS) {
       const oldest = existing[existing.length - 1];
-      if (oldest) await deleteDoc(doc(db, "chats", oldest.id));
+      if (oldest) await this.remove(oldest.id);
     }
+
     const chat: Chat = {
       id: uid("c"),
       userId,
@@ -162,21 +219,67 @@ export const chatService = {
       updatedAt: new Date().toISOString(),
       messages: [],
     };
-    await setDoc(doc(db, "chats", chat.id), chat);
+
+    if (db) {
+      try {
+        const { doc, setDoc } = await import("firebase/firestore");
+        await setDoc(doc(db, "chats", chat.id), chat);
+      } catch (e) {
+        console.warn("Firestore create failed, using localStorage", e);
+        const chats = getChatsFromStorage();
+        chats.push(chat);
+        saveChatsToStorage(chats);
+      }
+    } else {
+      const chats = getChatsFromStorage();
+      chats.push(chat);
+      saveChatsToStorage(chats);
+    }
+
     return chat;
   },
 
   async update(id: string, patch: Partial<Chat>): Promise<void> {
-    await setDoc(doc(db, "chats", id), { ...patch, updatedAt: new Date().toISOString() }, { merge: true });
+    const updated = { ...patch, updatedAt: new Date().toISOString() };
+
+    if (db) {
+      try {
+        const { doc, setDoc } = await import("firebase/firestore");
+        await setDoc(doc(db, "chats", id), updated, { merge: true });
+      } catch (e) {
+        console.warn("Firestore update failed, using localStorage", e);
+        const chats = getChatsFromStorage();
+        const idx = chats.findIndex((c) => c.id === id);
+        if (idx >= 0) chats[idx] = { ...chats[idx], ...updated };
+        saveChatsToStorage(chats);
+      }
+    } else {
+      const chats = getChatsFromStorage();
+      const idx = chats.findIndex((c) => c.id === id);
+      if (idx >= 0) chats[idx] = { ...chats[idx], ...updated };
+      saveChatsToStorage(chats);
+    }
   },
 
   async remove(id: string): Promise<void> {
-    await deleteDoc(doc(db, "chats", id));
+    if (db) {
+      try {
+        const { doc, deleteDoc } = await import("firebase/firestore");
+        await deleteDoc(doc(db, "chats", id));
+      } catch (e) {
+        console.warn("Firestore remove failed, using localStorage", e);
+        const chats = getChatsFromStorage();
+        saveChatsToStorage(chats.filter((c) => c.id !== id));
+      }
+    } else {
+      const chats = getChatsFromStorage();
+      saveChatsToStorage(chats.filter((c) => c.id !== id));
+    }
   },
 
   async clearAll(): Promise<void> {
     const chats = await this.list();
-    await Promise.all(chats.map((c) => deleteDoc(doc(db, "chats", c.id))));
+    await Promise.all(chats.map((c) => this.remove(c.id)));
   },
 
   async appendMessage(chatId: string, message: Message): Promise<void> {
@@ -191,7 +294,7 @@ export const chatService = {
   },
 };
 
-// ─── AI provider (modular — swap for n8n/external backend) ───────────────────
+// ─── AI provider (modular) ────────────────────────────────────────────────
 export const aiProvider = {
   async send(req: ChatRequest): Promise<ChatResponse> {
     if (N8N_WEBHOOK_URL) {
@@ -212,13 +315,14 @@ export const aiProvider = {
         },
       };
     }
+
     await delay(700 + Math.random() * 600);
     return {
       message: {
         id: uid("m"),
         chatId: req.chatId,
         role: "assistant",
-        content: mockReply(req.message.content), // Fixed: usually .content is needed unless message is a string
+        content: mockReply(req.message),
         createdAt: new Date().toISOString(),
       },
     };
@@ -238,7 +342,7 @@ function mockReply(prompt: string): string {
   return `${head}\n\nYou asked: "${trimmed}". To respond meaningfully I'd normally call your AI backend, but this preview is running with local stubs. Wire up VITE_N8N_WEBHOOK_URL in your .env to stream real responses.`;
 }
 
-// ─── Personalities (Firestore — 2 defaults + custom per user) ─────────────────
+// ─── Personalities (2 defaults + custom) ──────────────────────────────────
 const DEFAULT_PERSONALITIES: Personality[] = [
   {
     id: "default_friendly",
@@ -270,27 +374,57 @@ const DEFAULT_PERSONALITIES: Personality[] = [
   },
 ];
 
+const PERSONALITIES_KEY = "personalities_v1";
+
+function getPersonalitiesFromStorage(): Personality[] {
+  return storage.get<Personality[]>(PERSONALITIES_KEY, []) || [];
+}
+
+function savePersonalitiesToStorage(personalities: Personality[]): void {
+  storage.set(PERSONALITIES_KEY, personalities);
+}
+
 export const personalityService = {
   async list(): Promise<Personality[]> {
     const userId = authService.current()?.id;
     if (!userId) return DEFAULT_PERSONALITIES;
-    const q = query(
-      collection(db, "personalities"),
-      where("userId", "==", userId)
-    );
-    const snap = await getDocs(q);
-    const custom = snap.docs.map((d) => d.data() as Personality);
+
+    if (db) {
+      try {
+        const { collection, query, where, getDocs } = await import("firebase/firestore");
+        const q = query(collection(db, "personalities"), where("userId", "==", userId));
+        const snap = await getDocs(q);
+        const custom = snap.docs.map((d) => d.data() as Personality);
+        return [...DEFAULT_PERSONALITIES, ...custom];
+      } catch (e) {
+        console.warn("Firestore personalities list failed, using localStorage", e);
+      }
+    }
+
+    const custom = getPersonalitiesFromStorage().filter((p) => p.creator.id === userId);
     return [...DEFAULT_PERSONALITIES, ...custom];
   },
 
   async get(id: string): Promise<Personality | undefined> {
     const def = DEFAULT_PERSONALITIES.find((p) => p.id === id);
     if (def) return def;
-    const snap = await getDoc(doc(db, "personalities", id));
-    return snap.exists() ? (snap.data() as Personality) : undefined;
+
+    if (db) {
+      try {
+        const { doc, getDoc } = await import("firebase/firestore");
+        const snap = await getDoc(doc(db, "personalities", id));
+        return snap.exists() ? (snap.data() as Personality) : undefined;
+      } catch (e) {
+        console.warn("Firestore get personality failed, using localStorage", e);
+      }
+    }
+
+    return getPersonalitiesFromStorage().find((p) => p.id === id);
   },
 
-  async create(input: Omit<Personality, "id" | "createdAt" | "rating" | "chats" | "creator">): Promise<Personality> {
+  async create(
+    input: Omit<Personality, "id" | "createdAt" | "rating" | "chats" | "creator">
+  ): Promise<Personality> {
     const user = authService.current();
     const personality: Personality = {
       ...input,
@@ -304,31 +438,80 @@ export const personalityService = {
         avatar: (user?.name ?? "Y").charAt(0).toUpperCase(),
       },
     };
-    await setDoc(doc(db, "personalities", personality.id), {
-      ...personality,
-      userId: user?.id ?? "anon",
-    });
+
+    if (db) {
+      try {
+        const { doc, setDoc } = await import("firebase/firestore");
+        await setDoc(doc(db, "personalities", personality.id), {
+          ...personality,
+          userId: user?.id ?? "anon",
+        });
+      } catch (e) {
+        console.warn("Firestore create personality failed, using localStorage", e);
+        const all = getPersonalitiesFromStorage();
+        all.push(personality);
+        savePersonalitiesToStorage(all);
+      }
+    } else {
+      const all = getPersonalitiesFromStorage();
+      all.push(personality);
+      savePersonalitiesToStorage(all);
+    }
+
     return personality;
   },
 
   async remove(id: string): Promise<void> {
-    await deleteDoc(doc(db, "personalities", id));
+    if (db) {
+      try {
+        const { doc, deleteDoc } = await import("firebase/firestore");
+        await deleteDoc(doc(db, "personalities", id));
+      } catch (e) {
+        console.warn("Firestore remove personality failed, using localStorage", e);
+        const all = getPersonalitiesFromStorage();
+        savePersonalitiesToStorage(all.filter((p) => p.id !== id));
+      }
+    } else {
+      const all = getPersonalitiesFromStorage();
+      savePersonalitiesToStorage(all.filter((p) => p.id !== id));
+    }
   },
 };
 
-// ─── Reports (Firestore — feedback & report AI only) ──────────────────────────
+// ─── Reports (localStorage fallback) ──────────────────────────────────────
+const REPORTS_KEY = "reports_v1";
+
 export const reportService = {
   async submit(type: "feedback" | "report", message: string): Promise<void> {
     const user = authService.current();
-    await addDoc(collection(db, "reports"), {
+    const report = {
       uid: user?.id ?? "anon",
       type,
       message,
-      timestamp: serverTimestamp(),
-    });
+      timestamp: new Date().toISOString(),
+    };
+
+    if (db) {
+      try {
+        const { collection, addDoc, serverTimestamp } = await import("firebase/firestore");
+        await addDoc(collection(db, "reports"), {
+          ...report,
+          timestamp: serverTimestamp(),
+        });
+      } catch (e) {
+        console.warn("Firestore submit report failed, using localStorage", e);
+        const reports = storage.get<typeof report[]>(REPORTS_KEY, []) || [];
+        reports.push(report);
+        storage.set(REPORTS_KEY, reports);
+      }
+    } else {
+      const reports = storage.get<typeof report[]>(REPORTS_KEY, []) || [];
+      reports.push(report);
+      storage.set(REPORTS_KEY, reports);
+    }
   },
 };
 
 function delay(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
-}
+  }
