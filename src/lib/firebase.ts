@@ -1,6 +1,5 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getAnalytics } from "firebase/analytics";
 
 // Firebase config
 const firebaseConfig = {
@@ -9,19 +8,12 @@ const firebaseConfig = {
   projectId: "corechat-ai",
   storageBucket: "corechat-ai.appspot.com",
   messagingSenderId: "1971555902",
-  appId: "1:1971555902:web:0c82fd7dbae4371c15cb6f",
-  measurementId: "G-CE431FRTTJ"
+  appId: "1:1971555906:web:0c82fd7dbae4371c15cb6f"
 };
 
-// Initialize Firebase
+// Init app
 const app = initializeApp(firebaseConfig);
 
-// Auth
+// Auth only (safe for SSR)
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
-
-// Analytics (optional - safe check)
-let analytics;
-if (typeof window !== "undefined") {
-  analytics = getAnalytics(app);
-}
