@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Mic, Paperclip, Sparkles, Loader2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowUp, Mic, Paperclip, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 
 import { Wordmark } from "@/components/Logo";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useChat } from "@/hooks/useChat";
 import { cn } from "@/lib/utils";
-import { chatService, personalityService, authService } from "@/services/api";
+import { chatService, personalityService } from "@/services/api";
 
 const searchSchema = z.object({ c: z.string().optional() });
 
@@ -24,26 +24,7 @@ export const Route = createFileRoute("/_app/chat")({
 function ChatPage() {
   const { c: chatId } = Route.useSearch();
   const navigate = useNavigate();
-  
-  // ─── Authentication Crash Guards ───
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  useEffect(() => {
-    const user = authService.current();
-    setCurrentUser(user);
-    setCheckingAuth(false);
-
-    const unsubscribe = authService.onAuthChange((u) => {
-      setCurrentUser(u);
-      setCheckingAuth(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const safeChatId = chatId || null;
-  const { chat, isStreaming, send } = useChat(safeChatId);
-  
+  const { chat, isStreaming, send } = useChat(chatId ?? null);
   const [draft, setDraft] = useState("");
   const [recording, setRecording] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -53,70 +34,38 @@ function ChatPage() {
   useEffect(() => {
     if (chat?.personalityId) {
       personalityService.get(chat.personalityId).then(setPersonality);
-    } else {
-      setPersonality(undefined);
     }
   }, [chat?.personalityId]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-    }
-  }, [chat?.messages?.length, isStreaming]);
-
-  // Syncing screen
-  if (checkingAuth) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="size-8 animate-spin text-foreground" />
-          <p className="text-sm text-muted-foreground">Syncing session...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Not Logged In screen
-  if (!currentUser) {
-    return (
-      <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
-        <h2 className="text-xl font-semibold">Authentication Required</h2>
-        <p className="text-sm text-muted-foreground max-w-xs">Please return to home page and sign in with Google.</p>
-        <Button onClick={() => navigate({ to: "/" })}>Go Home</Button>
-      </div>
-    );
-  }
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [chat?.messages.length, isStreaming]);
 
   async function handleSend(text: string) {
     const value = text.trim();
-    if (!value || isStreaming) return;
+    if (!value) return;
+    let id = chatId;
     
-    setDraft("");
-    let currentChatId = chatId;
-    
-    if (!currentChatId) {
-      try {
-        const created = await chatService.create();
-        currentChatId = created.id;
+    if (!id) {
+  try {
+    const created = await chatService.create();
 
-        await navigate({
-          to: "/chat",
-          search: { c: currentChatId },
-          replace: true,
-        });
-      } catch (err) {
-        console.error("Failed to create chat:", err);
-        setDraft(value); 
-        return;
-      }
+    alert("Chat created: " + created.id);
+
+    id = created.id;
+
+    navigate({
+      to: "/chat",
+      search: { c: id },
+      replace: true,
+    });
+  } catch (err) {
+    console.error(err);
+    alert("Create chat failed: " + String(err));
+    return;
+  }
     }
-    
-    try {
-      // Yahan currentChatId ko pass kiya taaki stale null value hook ko crash na kare
-      await send(value, currentChatId);
-    } catch (err) {
-      console.error("Failed to send message:", err);
-    }
+    await send(value);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -126,7 +75,7 @@ function ChatPage() {
     }
   }
 
-  const empty = !chat || !chat.messages || chat.messages.length === 0;
+  const empty = !chat || chat.messages.length === 0;
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col md:h-screen">
@@ -143,7 +92,7 @@ function ChatPage() {
           )}
         </div>
         <div className="text-xs text-muted-foreground">
-          {chat?.messages?.length ?? 0} messages
+          {chat?.messages.length ?? 0} messages
         </div>
       </div>
 
@@ -153,7 +102,7 @@ function ChatPage() {
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 md:px-8">
             <AnimatePresence initial={false}>
-              {chat?.messages?.map((m) => (
+              {chat!.messages.map((m) => (
                 <motion.div
                   key={m.id}
                   initial={{ opacity: 0, y: 6 }}
@@ -262,6 +211,7 @@ function Avatar({ label }: { label: string }) {
   );
 }
 
+// Empty state: keeps heading + logo, removes 4 suggestion buttons
 function EmptyState() {
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-16 text-center md:px-8">
