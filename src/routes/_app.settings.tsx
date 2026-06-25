@@ -22,7 +22,34 @@ const DEFAULT_SETTINGS: SettingsState = {
   notifications: true,
 };
 
-const LANGUAGES = ["English", "Español", "Français", "Deutsch", "日本語", "العربية"];
+const LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "es", label: "Español" },
+  { code: "fr", label: "Français" },
+  { code: "de", label: "Deutsch" },
+  { code: "ar", label: "العربية" },
+  { code: "ja", label: "日本語" },
+  { code: "zh", label: "中文" },
+  { code: "pt", label: "Português" },
+  { code: "ru", label: "Русский" },
+  { code: "hi", label: "हिन्दी" },
+  { code: "tr", label: "Türkçe" },
+  { code: "ko", label: "한국어" },
+];
+
+// Simple UI label translations for instant feedback
+const UI_LABELS: Record<string, Record<string, string>> = {
+  en: { settings: "Settings", tune: "Tune the experience to your preferences.", appearance: "Appearance", theme: "Theme", language: "Language", notifications: "Notifications", push: "Push notifications", data: "Data", deleteChats: "Delete all chats", account: "Account", signOut: "Sign out", deleteDesc: "Permanently removes your chat history from this device.", signOutDesc: "End your session on this device.", pushDesc: "Get notified when replies arrive or workflows finish.", light: "Light", dark: "Dark", deleteBtn: "Delete chats", logoutBtn: "Log out", langDesc: "The default language for the interface.", themeDesc: "Pick how CoreChat looks. Affects every page." },
+  es: { settings: "Configuración", tune: "Ajusta la experiencia a tus preferencias.", appearance: "Apariencia", theme: "Tema", language: "Idioma", notifications: "Notificaciones", push: "Notificaciones push", data: "Datos", deleteChats: "Eliminar todos los chats", account: "Cuenta", signOut: "Cerrar sesión", deleteDesc: "Elimina permanentemente tu historial de chats.", signOutDesc: "Termina tu sesión en este dispositivo.", pushDesc: "Recibe notificaciones cuando lleguen respuestas.", light: "Claro", dark: "Oscuro", deleteBtn: "Eliminar chats", logoutBtn: "Cerrar sesión", langDesc: "El idioma predeterminado para la interfaz.", themeDesc: "Elige cómo se ve CoreChat." },
+  fr: { settings: "Paramètres", tune: "Personnalisez l'expérience selon vos préférences.", appearance: "Apparence", theme: "Thème", language: "Langue", notifications: "Notifications", push: "Notifications push", data: "Données", deleteChats: "Supprimer tous les chats", account: "Compte", signOut: "Se déconnecter", deleteDesc: "Supprime définitivement votre historique de chats.", signOutDesc: "Terminer votre session sur cet appareil.", pushDesc: "Soyez notifié quand les réponses arrivent.", light: "Clair", dark: "Sombre", deleteBtn: "Supprimer chats", logoutBtn: "Se déconnecter", langDesc: "La langue par défaut pour l'interface.", themeDesc: "Choisissez l'apparence de CoreChat." },
+  de: { settings: "Einstellungen", tune: "Passen Sie die Erfahrung Ihren Vorlieben an.", appearance: "Erscheinungsbild", theme: "Design", language: "Sprache", notifications: "Benachrichtigungen", push: "Push-Benachrichtigungen", data: "Daten", deleteChats: "Alle Chats löschen", account: "Konto", signOut: "Abmelden", deleteDesc: "Löscht Ihren Chat-Verlauf dauerhaft.", signOutDesc: "Beenden Sie Ihre Sitzung auf diesem Gerät.", pushDesc: "Benachrichtigungen erhalten wenn Antworten eintreffen.", light: "Hell", dark: "Dunkel", deleteBtn: "Chats löschen", logoutBtn: "Abmelden", langDesc: "Die Standardsprache für die Benutzeroberfläche.", themeDesc: "Wählen Sie das Aussehen von CoreChat." },
+  ar: { settings: "الإعدادات", tune: "ضبط التجربة وفق تفضيلاتك.", appearance: "المظهر", theme: "السمة", language: "اللغة", notifications: "الإشعارات", push: "إشعارات الدفع", data: "البيانات", deleteChats: "حذف جميع المحادثات", account: "الحساب", signOut: "تسجيل الخروج", deleteDesc: "يحذف محفوظات المحادثات نهائياً.", signOutDesc: "إنهاء جلستك على هذا الجهاز.", pushDesc: "الحصول على إشعارات عند وصول الردود.", light: "فاتح", dark: "داكن", deleteBtn: "حذف المحادثات", logoutBtn: "تسجيل الخروج", langDesc: "اللغة الافتراضية للواجهة.", themeDesc: "اختر كيف يبدو CoreChat." },
+};
+
+function t(lang: string, key: string): string {
+  const code = LANGUAGES.find((l) => l.label === lang)?.code ?? "en";
+  return UI_LABELS[code]?.[key] ?? UI_LABELS["en"]?.[key] ?? key;
+}
 
 export const Route = createFileRoute("/_app/settings")({
   head: () => ({ meta: [{ title: "Settings — CoreChat AI" }] }),
@@ -40,15 +67,18 @@ function SettingsPage() {
   useEffect(() => {
     storage.set("settings", settings);
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
+    // Apply RTL for Arabic
+    document.documentElement.dir =
+      LANGUAGES.find((l) => l.label === settings.language)?.code === "ar" ? "rtl" : "ltr";
   }, [settings]);
 
   function update<K extends keyof SettingsState>(key: K, value: SettingsState[K]) {
     setSettings((s) => ({ ...s, [key]: value }));
   }
 
-  function deleteAllChats() {
-    if (!confirm("Delete every chat? This cannot be undone.")) return;
-    chatService.clearAll();
+  async function deleteAllChats() {
+    if (!confirm(t(settings.language, "deleteChats") + "?")) return;
+    await chatService.clearAll();
   }
 
   function logout() {
@@ -56,58 +86,51 @@ function SettingsPage() {
     navigate({ to: "/login" });
   }
 
+  const lang = settings.language;
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10 md:px-8">
-      <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Settings</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Tune the experience to your preferences.
-      </p>
+      <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+        {t(lang, "settings")}
+      </h1>
+      <p className="mt-2 text-sm text-muted-foreground">{t(lang, "tune")}</p>
 
       <div className="mt-8 space-y-4">
-        <Section title="Appearance">
-          <Row
-            label="Theme"
-            description="Pick how CoreChat looks. Affects every page."
-          >
+        <Section title={t(lang, "appearance")}>
+          <Row label={t(lang, "theme")} description={t(lang, "themeDesc")}>
             <div className="flex gap-1.5 rounded-xl border border-border bg-card p-1">
               <ThemeButton
                 active={settings.theme === "light"}
                 onClick={() => update("theme", "light")}
               >
-                <Sun className="size-4" /> Light
+                <Sun className="size-4" /> {t(lang, "light")}
               </ThemeButton>
               <ThemeButton
                 active={settings.theme === "dark"}
                 onClick={() => update("theme", "dark")}
               >
-                <Moon className="size-4" /> Dark
+                <Moon className="size-4" /> {t(lang, "dark")}
               </ThemeButton>
             </div>
           </Row>
 
-          <Row
-            label="Language"
-            description="The default language for the interface."
-            icon={Globe}
-          >
+          <Row label={t(lang, "language")} description={t(lang, "langDesc")} icon={Globe}>
             <select
               value={settings.language}
               onChange={(e) => update("language", e.target.value)}
-              className="flex h-10 w-44 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="flex h-10 w-48 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               {LANGUAGES.map((l) => (
-                <option key={l}>{l}</option>
+                <option key={l.code} value={l.label}>
+                  {l.label}
+                </option>
               ))}
             </select>
           </Row>
         </Section>
 
-        <Section title="Notifications">
-          <Row
-            label="Push notifications"
-            description="Get notified when replies arrive or workflows finish."
-            icon={Bell}
-          >
+        <Section title={t(lang, "notifications")}>
+          <Row label={t(lang, "push")} description={t(lang, "pushDesc")} icon={Bell}>
             <Switch
               checked={settings.notifications}
               onCheckedChange={(v) => update("notifications", v)}
@@ -115,25 +138,22 @@ function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="Data">
-          <Row
-            label="Delete all chats"
-            description="Permanently removes your chat history from this device."
-          >
+        <Section title={t(lang, "data")}>
+          <Row label={t(lang, "deleteChats")} description={t(lang, "deleteDesc")}>
             <Button
               variant="outline"
               className="gap-2 rounded-xl"
-              onClick={deleteAllChats}
+              onClick={() => void deleteAllChats()}
             >
-              <Trash2 className="size-4" /> Delete chats
+              <Trash2 className="size-4" /> {t(lang, "deleteBtn")}
             </Button>
           </Row>
         </Section>
 
-        <Section title="Account">
-          <Row label="Sign out" description="End your session on this device.">
+        <Section title={t(lang, "account")}>
+          <Row label={t(lang, "signOut")} description={t(lang, "signOutDesc")}>
             <Button variant="outline" className="gap-2 rounded-xl" onClick={logout}>
-              <LogOut className="size-4" /> Log out
+              <LogOut className="size-4" /> {t(lang, "logoutBtn")}
             </Button>
           </Row>
         </Section>
@@ -215,4 +235,5 @@ function ThemeButton({
       {children}
     </button>
   );
-}
+    }
+                                             
