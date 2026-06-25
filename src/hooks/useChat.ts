@@ -11,21 +11,30 @@ export function useChat(chatId: string | null) {
   const [isStreaming, setIsStreaming] = useState(false);
 
   useEffect(() => {
-    if (!chatId) {
-      setChat(null);
-      return;
+    async function loadChat() {
+      if (!chatId) {
+        setChat(null);
+        return;
+      }
+
+      const data = await chatService.get(chatId);
+      setChat(data ?? null);
     }
-    setChat(chatService.get(chatId) ?? null);
+
+    loadChat();
   }, [chatId]);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (!chatId) return;
-    setChat(chatService.get(chatId) ?? null);
+
+    const data = await chatService.get(chatId);
+    setChat(data ?? null);
   }, [chatId]);
 
   const send = useCallback(
     async (text: string) => {
       if (!chatId || !text.trim()) return;
+
       const userMessage: Message = {
         id: uid("m"),
         chatId,
@@ -33,20 +42,28 @@ export function useChat(chatId: string | null) {
         content: text.trim(),
         createdAt: new Date().toISOString(),
       };
-      chatService.appendMessage(chatId, userMessage);
-      refresh();
+
+      await chatService.appendMessage(chatId, userMessage);
+      await refresh();
+
       setIsStreaming(true);
+
       try {
-        const current = chatService.get(chatId);
+        const current = await chatService.get(chatId);
+
         const res = await aiProvider.send({
           chatId,
           message: text.trim(),
           personalityId: current?.personalityId,
           history:
-            current?.messages.map((m) => ({ role: m.role, content: m.content })) ?? [],
+            current?.messages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })) ?? [],
         });
-        chatService.appendMessage(chatId, res.message);
-        refresh();
+
+        await chatService.appendMessage(chatId, res.message);
+        await refresh();
       } finally {
         setIsStreaming(false);
       }
@@ -54,5 +71,10 @@ export function useChat(chatId: string | null) {
     [chatId, refresh],
   );
 
-  return { chat, isStreaming, send, refresh };
+  return {
+    chat,
+    isStreaming,
+    send,
+    refresh,
+  };
 }
