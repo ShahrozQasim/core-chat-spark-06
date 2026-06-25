@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
-import { authService } from "@/services/api";
 import { Menu } from "lucide-react";
 import { Wordmark } from "@/components/Logo";
+
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -17,11 +19,19 @@ function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    if (!authService.current()) {
-      navigate({ to: "/login" });
-      return;
-    }
-    setReady(true);
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        navigate({ to: "/login" });
+        setReady(false);
+      } else {
+        setReady(true);
+
+        // 👉 AUTO GO TO CHAT (important)
+        navigate({ to: "/" }); 
+      }
+    });
+
+    return () => unsub();
   }, [navigate]);
 
   if (!ready) return null;
@@ -29,6 +39,7 @@ function AppLayout() {
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground">
       <AppSidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+
       <div className="flex min-h-screen flex-1 flex-col md:pl-64">
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur md:hidden">
           <Wordmark />
@@ -41,6 +52,7 @@ function AppLayout() {
             <Menu className="size-5" />
           </Button>
         </header>
+
         <main className="flex flex-1 flex-col">
           <Outlet />
         </main>
