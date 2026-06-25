@@ -39,12 +39,12 @@ import {
 } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: AIzaSyDUdare1dGvNq8HVgLuPC7ZgeYtXLZHJ_w,
-  authDomain: corechat-ai.firebaseapp.com,
-  projectId: corechat-ai,
-  storageBucket: corechat-ai.firebasestorage.app,
-  messagingSenderId: 1971555902,
-  appId: 1:1971555902:web:0c82fd7dbae4371c15cb6f,
+  apiKey: "AIzaSyDUdare1dGvNq8HVgLuPC7ZgeYtXLZHJ_w",
+  authDomain: "corechat-ai.firebaseapp.com",
+  projectId: "corechat-ai",
+  storageBucket: "corechat-ai.appspot.com",
+  messagingSenderId: "1971555902",
+  appId: "1:1971555902:web:0c82fd7dbae4371c15cb6f",
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]!;
