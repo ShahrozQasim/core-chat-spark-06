@@ -25,17 +25,15 @@ function ChatPage() {
   const { c: chatId } = Route.useSearch();
   const navigate = useNavigate();
   
-  // ─── CRASH GUARD 1: User state aur Loading check ───
+  // ─── Authentication Crash Guards ───
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
-    // Check if user is currently saved in storage or active session
     const user = authService.current();
     setCurrentUser(user);
     setCheckingAuth(false);
 
-    // Subscribe to changes safely
     const unsubscribe = authService.onAuthChange((u) => {
       setCurrentUser(u);
       setCheckingAuth(false);
@@ -43,8 +41,6 @@ function ChatPage() {
     return () => unsubscribe();
   }, []);
 
-  // ─── CRASH GUARD 2: Safe string fallback for hook ───
-  // Agar chatId undefined ho toh hook crash na kare, isliye string fallback or null handle kiya hai
   const safeChatId = chatId || null;
   const { chat, isStreaming, send } = useChat(safeChatId);
   
@@ -68,7 +64,7 @@ function ChatPage() {
     }
   }, [chat?.messages?.length, isStreaming]);
 
-  // Loading Screen jab tak authentication stabilize na ho
+  // Syncing screen
   if (checkingAuth) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -80,7 +76,7 @@ function ChatPage() {
     );
   }
 
-  // Agar login ke bagair direct access karein toh safe handle
+  // Not Logged In screen
   if (!currentUser) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-background px-4 text-center">
@@ -116,7 +112,8 @@ function ChatPage() {
     }
     
     try {
-      await send(value);
+      // Yahan currentChatId ko pass kiya taaki stale null value hook ko crash na kare
+      await send(value, currentChatId);
     } catch (err) {
       console.error("Failed to send message:", err);
     }
@@ -284,4 +281,4 @@ function EmptyState() {
       </p>
     </div>
   );
-                  }
+}
