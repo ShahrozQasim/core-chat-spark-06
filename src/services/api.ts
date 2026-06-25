@@ -131,22 +131,20 @@ export const chatService = {
   },
 
   async get(id: string): Promise<Chat | undefined> {
-  try {
-    const snap = await getDoc(doc(db, "chats", id));
-
-    if (!snap.exists()) {
-      console.log("Chat not found:", id);
+    try {
+      const snap = await getDoc(doc(db, "chats", id));
+      if (!snap.exists()) {
+        console.log("Chat not found:", id);
+        return undefined;
+      }
+      return snap.data() as Chat;
+    } catch (e) {
+      console.error("Firestore get error:", e);
+      alert("Firestore get error: " + String(e));
       return undefined;
     }
+  },
 
-    return snap.data() as Chat;
-  } catch (e) {
-    console.error("Firestore get error:", e);
-    alert("Firestore get error: " + String(e));
-    return undefined;
-  }
- }
-  
   async create(personalityId?: string): Promise<Chat> {
     const userId = authService.current()?.id ?? "anon";
     // Enforce FIFO: delete oldest if already at limit
@@ -220,7 +218,7 @@ export const aiProvider = {
         id: uid("m"),
         chatId: req.chatId,
         role: "assistant",
-        content: mockReply(req.message),
+        content: mockReply(req.message.content), // Fixed: usually .content is needed unless message is a string
         createdAt: new Date().toISOString(),
       },
     };
@@ -330,6 +328,7 @@ export const reportService = {
     });
   },
 };
+
 function delay(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
 }
