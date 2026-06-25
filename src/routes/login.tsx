@@ -1,12 +1,10 @@
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { ArrowRight, Eye, EyeOff, Loader2, Mail } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useState } from "react";
 
 import { Wordmark } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { authService } from "@/services/api";
 
 export const Route = createFileRoute("/login")({
@@ -21,35 +19,17 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!email || !password) {
-      setError("Enter your email and password to continue.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await authService.signIn(email, password);
-      navigate({ to: "/chat" });
-    } catch {
-      setError("Could not sign in. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function onGoogle() {
+    setError(null);
     setLoading(true);
     try {
       await authService.signInWithGoogle();
       navigate({ to: "/chat" });
+    } catch (e) {
+      setError("Could not sign in with Google. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -69,93 +49,29 @@ function LoginPage() {
           Sign in to continue your conversations.
         </p>
 
-        <form onSubmit={onSubmit} className="mt-8 space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@corechat.ai"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="h-11 pl-9"
-                autoComplete="email"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <button
-                type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Forgot?
-              </button>
-            </div>
-            <div className="relative">
-              <Input
-                id="password"
-                type={show ? "text" : "password"}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-11 pr-10"
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                onClick={() => setShow((s) => !s)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:text-foreground"
-                aria-label={show ? "Hide password" : "Show password"}
-              >
-                {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-          </div>
-
+        <div className="mt-8 space-y-4">
           {error && (
             <p className="text-sm text-destructive" role="alert">
               {error}
             </p>
           )}
 
-          <Button type="submit" className="h-11 w-full rounded-xl" disabled={loading}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 w-full rounded-xl"
+            onClick={onGoogle}
+            disabled={loading}
+          >
             {loading ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <>
-                Sign in <ArrowRight className="ml-1 size-4" />
+                <GoogleIcon /> Continue with Google
               </>
             )}
           </Button>
-        </form>
-
-        <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
-          <div className="h-px flex-1 bg-border" />
-          OR
-          <div className="h-px flex-1 bg-border" />
         </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 w-full rounded-xl"
-          onClick={onGoogle}
-          disabled={loading}
-        >
-          <GoogleIcon /> Continue with Google
-        </Button>
-
-        <p className="mt-8 text-center text-sm text-muted-foreground">
-          Don't have an account?{" "}
-          <Link to="/signup" className="font-medium text-foreground underline-offset-4 hover:underline">
-            Create one
-          </Link>
-        </p>
       </motion.div>
     </AuthShell>
   );
@@ -176,8 +92,8 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             className="max-w-md"
           >
             <p className="text-2xl font-medium leading-snug tracking-tight">
-              “The fastest way I've ever moved from a half-formed thought to a finished
-              answer. CoreChat just gets out of the way.”
+              "The fastest way I've ever moved from a half-formed thought to a finished
+              answer. CoreChat just gets out of the way."
             </p>
             <footer className="mt-6 text-sm opacity-70">— Mira K., Product Designer</footer>
           </motion.blockquote>
@@ -189,7 +105,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 
 function GoogleIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="size-4">
+    <svg viewBox="0 0 24 24" className="mr-2 size-4">
       <path
         fill="currentColor"
         d="M21.6 12.227c0-.818-.073-1.604-.21-2.36H12v4.46h5.385a4.6 4.6 0 0 1-2 3.022v2.51h3.235c1.89-1.741 2.98-4.305 2.98-7.632Z"
