@@ -38,13 +38,14 @@ import {
 } from "firebase/firestore";
 
 // ─── Firebase Init ───────────────────────────────────────────────────────
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "demo_key",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "demo.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "demo",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "demo.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "demo",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "demo",
+  apiKey: "AIzaSyDUdare1dGvNq8HVgLuPC7ZgeYtXLZHJ_w",
+  authDomain: "corechat-ai.firebaseapp.com",
+  projectId: "corechat-ai",
+  storageBucket: "corechat-ai.appspot.com",
+  messagingSenderId: "1971555902",
+  appId: "1:1971555902:web:0c82fd7dbae4371c15cb6f",
 };
 
 let app: any;
