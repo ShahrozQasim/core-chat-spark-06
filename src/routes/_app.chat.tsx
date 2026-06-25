@@ -34,38 +34,49 @@ function ChatPage() {
   useEffect(() => {
     if (chat?.personalityId) {
       personalityService.get(chat.personalityId).then(setPersonality);
+    } else {
+      setPersonality(undefined);
     }
   }, [chat?.personalityId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [chat?.messages.length, isStreaming]);
+  }, [chat?.messages?.length, isStreaming]);
 
   async function handleSend(text: string) {
     const value = text.trim();
-    if (!value) return;
-    let id = chatId;
+    if (!value || isStreaming) return;
     
-    if (!id) {
-  try {
-    const created = await chatService.create();
+    // 1. Pehle input field ko clear karein taaki double-click ya enter loop na bane
+    setDraft("");
+    
+    let currentChatId = chatId;
+    
+    if (!currentChatId) {
+      try {
+        const created = await chatService.create();
+        currentChatId = created.id;
 
-    alert("Chat created: " + created.id);
-
-    id = created.id;
-
-    navigate({
-      to: "/chat",
-      search: { c: id },
-      replace: true,
-    });
-  } catch (err) {
-    console.error(err);
-    alert("Create chat failed: " + String(err));
-    return;
-  }
+        // 2. Pehle router ka URL safely update karein aur query param 'c' set karein
+        await navigate({
+          to: "/chat",
+          search: { c: currentChatId },
+          replace: true,
+        });
+      } catch (err) {
+        console.error("Failed to create chat:", err);
+        alert("Create chat failed: " + String(err));
+        setDraft(value); // Error aane par prompt wapas text area mein daal dein
+        return;
+      }
     }
-    await send(value);
+    
+    // 3. Naye ya majooda chatId par message send karein
+    try {
+      await send(value);
+    } catch (err) {
+      console.error("Failed to send message:", err);
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -75,7 +86,7 @@ function ChatPage() {
     }
   }
 
-  const empty = !chat || chat.messages.length === 0;
+  const empty = !chat || !chat.messages || chat.messages.length === 0;
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col md:h-screen">
@@ -92,7 +103,7 @@ function ChatPage() {
           )}
         </div>
         <div className="text-xs text-muted-foreground">
-          {chat?.messages.length ?? 0} messages
+          {chat?.messages?.length ?? 0} messages
         </div>
       </div>
 
@@ -102,7 +113,7 @@ function ChatPage() {
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 md:px-8">
             <AnimatePresence initial={false}>
-              {chat!.messages.map((m) => (
+              {chat?.messages?.map((m) => (
                 <motion.div
                   key={m.id}
                   initial={{ opacity: 0, y: 6 }}
@@ -211,7 +222,6 @@ function Avatar({ label }: { label: string }) {
   );
 }
 
-// Empty state: keeps heading + logo, removes 4 suggestion buttons
 function EmptyState() {
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-16 text-center md:px-8">
@@ -231,4 +241,4 @@ function EmptyState() {
       </p>
     </div>
   );
-}
+        }
