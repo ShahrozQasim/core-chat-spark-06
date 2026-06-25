@@ -1,11 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  ArrowUp,
-  Mic,
-  Paperclip,
-  Sparkles,
-} from "lucide-react";
+import { ArrowUp, Mic, Paperclip, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 
@@ -26,13 +21,6 @@ export const Route = createFileRoute("/_app/chat")({
   component: ChatPage,
 });
 
-const SUGGESTIONS = [
-  { title: "Draft a launch email", subtitle: "for a minimalist productivity app" },
-  { title: "Explain a concept", subtitle: "transformers, like I'm 12" },
-  { title: "Plan my week", subtitle: "around 3 deep-work blocks" },
-  { title: "Refactor this", subtitle: "TypeScript snippet for clarity" },
-];
-
 function ChatPage() {
   const { c: chatId } = Route.useSearch();
   const navigate = useNavigate();
@@ -41,11 +29,13 @@ function ChatPage() {
   const [recording, setRecording] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [personality, setPersonality] = useState<Awaited<ReturnType<typeof personalityService.get>>>(undefined);
 
-  const personality = useMemo(
-    () => (chat?.personalityId ? personalityService.get(chat.personalityId) : undefined),
-    [chat],
-  );
+  useEffect(() => {
+    if (chat?.personalityId) {
+      personalityService.get(chat.personalityId).then(setPersonality);
+    }
+  }, [chat?.personalityId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -56,7 +46,7 @@ function ChatPage() {
     if (!value) return;
     let id = chatId;
     if (!id) {
-      const created = chatService.create();
+      const created = await chatService.create();
       id = created.id;
       navigate({ to: "/chat", search: { c: id }, replace: true });
     }
@@ -94,7 +84,7 @@ function ChatPage() {
 
       <div ref={scrollRef} className="cc-scroll flex-1 overflow-y-auto">
         {empty ? (
-          <EmptyState onPick={(t) => void handleSend(t)} />
+          <EmptyState />
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 md:px-8">
             <AnimatePresence initial={false}>
@@ -171,10 +161,7 @@ function ChatPage() {
             <Button
               variant="ghost"
               size="icon"
-              className={cn(
-                "relative size-9 shrink-0",
-                recording && "text-foreground",
-              )}
+              className={cn("relative size-9 shrink-0", recording && "text-foreground")}
               onClick={() => setRecording((r) => !r)}
               aria-label={recording ? "Stop recording" : "Start voice input"}
             >
@@ -210,7 +197,8 @@ function Avatar({ label }: { label: string }) {
   );
 }
 
-function EmptyState({ onPick }: { onPick: (text: string) => void }) {
+// Empty state: keeps heading + logo, removes 4 suggestion buttons
+function EmptyState() {
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-16 text-center md:px-8">
       <motion.div
@@ -225,24 +213,8 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
         What would you like to do today?
       </h1>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">
-        Ask anything, brainstorm, or pick one of the prompts below to get going.
+        Ask anything or start typing below.
       </p>
-
-      <div className="mt-10 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
-        {SUGGESTIONS.map((s, i) => (
-          <motion.button
-            key={s.title}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 * i, duration: 0.35 }}
-            onClick={() => onPick(`${s.title} — ${s.subtitle}`)}
-            className="rounded-2xl border border-border bg-card p-4 text-left transition hover:-translate-y-0.5 hover:border-foreground hover:shadow-sm"
-          >
-            <p className="text-sm font-medium">{s.title}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{s.subtitle}</p>
-          </motion.button>
-        ))}
-      </div>
     </div>
   );
 }
