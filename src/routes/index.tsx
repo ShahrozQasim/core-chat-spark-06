@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useEffect } from "react";
 
 import { Logo } from "@/components/Logo";
+import { authService } from "@/services/api"; // <-- Import authService safely
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -27,7 +28,20 @@ function SplashScreen() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const t = setTimeout(() => navigate({ to: "/login" }), 2000);
+    const t = setTimeout(() => {
+      // ─── CRITICAL ROUTING FIX ───
+      // Check karo user pehle se logged-in hai ya nahi
+      const user = authService.current();
+      
+      if (user) {
+        // Agar user login hai, toh direct chat workspace par bhejo
+        void navigate({ to: "/chat", replace: true });
+      } else {
+        // Agar user login nahi hai, tabhi login screen par bhejo
+        void navigate({ to: "/login", replace: true });
+      }
+    }, 2000);
+
     return () => clearTimeout(t);
   }, [navigate]);
 
