@@ -45,12 +45,26 @@ function ChatPage() {
     const value = text.trim();
     if (!value) return;
     let id = chatId;
+    
     if (!id) {
-      const created = await chatService.create();
-      id = created.id;
-      navigate({ to: "/chat", search: { c: id }, replace: true });
+  try {
+    const created = await chatService.create();
+
+    alert("Chat created: " + created.id);
+
+    id = created.id;
+
+    navigate({
+      to: "/chat",
+      search: { c: id },
+      replace: true,
+    });
+  } catch (err) {
+    console.error(err);
+    alert("Create chat failed: " + String(err));
+    return;
+  }
     }
-    setDraft("");
     await send(value);
   }
 
